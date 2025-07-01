@@ -1,0 +1,102 @@
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    restart: always
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - microservices-net
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - microservices-net
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    container_name: gateway
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - FLASK_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - microservices-net
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: auth_service/Dockerfile
+    container_name: auth-service
+    restart: always
+    ports:
+      - "5001:5001"
+    environment:
+      - FLASK_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - microservices-net
+
+  storage-service:
+    build:
+      context: .
+      dockerfile: storage_service/Dockerfile
+    container_name: storage-service
+    restart: always
+    ports:
+      - "5002:5002"
+    environment:
+      - FLASK_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - microservices-net
+
+  cache-service:
+    build:
+      context: .
+      dockerfile: cache_service/Dockerfile
+    container_name: cache-service
+    restart: always
+    ports:
+      - "5003:5003"
+    environment:
+      - FLASK_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    networks:
+      - microservices-net
+
+networks:
+  microservices-net:
+    driver: bridge
+    name: microservices-net
+
+volumes:
+  redis-data:

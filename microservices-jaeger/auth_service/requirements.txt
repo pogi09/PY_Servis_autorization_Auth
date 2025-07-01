@@ -1,0 +1,5 @@
+flask
+gunicorn
+opentelemetry-instrumentation-flask
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-http

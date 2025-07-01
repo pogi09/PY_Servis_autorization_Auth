@@ -1,0 +1,40 @@
+from flask import Flask, request
+from opentelemetry import trace
+from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+import redis
+import json
+
+app = Flask(__name__)
+redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+# Настройка Jaeger
+trace.set_tracer_provider(TracerProvider(resource=Resource.create({"service.name": "cache-service"})))
+jaeger_exporter = JaegerExporter(agent_host_name="localhost", agent_port=6831)
+trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(jaeger_exporter))
+tracer = trace.get_tracer(__name__)
+FlaskInstrumentor().instrument_app(app)
+
+@app.route('/cache', methods=['GET'])
+def get_cache():
+    with tracer.start_as_current_span("cache-get"):
+        key = request.args.get('key')
+        value = redis_client.get(key)
+        if value:
+            return json.loads(value), 200
+        return {"error": "Not found"}, 404
+
+@app.route('/cache', methods=['POST'])
+def set_cache():
+    with tracer.start_as_current_span("cache-set"):
+        data = request.json
+        key = data.get('key')
+        value = data.get('value')
+        redis_client.setex(key, 3600, json.dumps(value))  # Кэш на 1 час
+        return {"status": "cached"}, 200
+
+if __name__ == '__main__':
+    app.run(port=5003)

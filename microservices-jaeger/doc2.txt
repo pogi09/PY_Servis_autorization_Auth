@@ -1,0 +1,132 @@
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    restart: always
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "5775:5775/udp"
+      - "6831:6831/udp"
+      - "6832:6832/udp"
+      - "5778:5778"
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+      - "9411:9411"
+      - "4317:4317"
+      - "4318:4318"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - microservices-net
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - microservices-net
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: gateway
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - FLASK_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      jaeger:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      storage-service:
+        condition: service_started
+    networks:
+      - microservices-net
+
+  auth-service:
+    build:
+      context: ./auth_service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    restart: always
+    ports:
+      - "5001:5001"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      jaeger:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - microservices-net
+
+  storage-service:
+    build:
+      context: ./storage_service
+      dockerfile: Dockerfile
+    container_name: storage-service
+    restart: always
+    ports:
+      - "5002:5002"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      jaeger:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - microservices-net
+
+  cache-service:
+    build:
+      context: ./cache_service
+      dockerfile: Dockerfile
+    container_name: cache-service
+    restart: always
+    ports:
+      - "5003:5003"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      jaeger:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - microservices-net
+
+networks:
+  microservices-net:
+    driver: bridge
+    name: microservices-net
+
+volumes:
+  redis-data:
+
